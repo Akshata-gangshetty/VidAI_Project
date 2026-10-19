@@ -6,13 +6,13 @@ import {
     getLikedVideos
 } from "../controllers/like.controller.js";
 
-import { verifyJWT } from "../middlewares/auth.middleware.js";
+import { verifyJWt } from "../middlrwares/auth.middleware.js";
 
 const router = Router();
 
 
 // All like routes require login
-router.use(verifyJWT);
+router.use(verifyJWt);
 
 
 // Like / unlike an educational video

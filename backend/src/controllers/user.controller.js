@@ -1,8 +1,8 @@
-import { asynchandler } from "../utils/asynchandler.js";
-import { Apierror } from "../utils/Apierror.js";
+import { asynchandler } from "../utils/asyncHandler.js";
+import {Apierror} from "../utils/ApiError.js"
 import { User } from "../models/user.model.js";
 import { uploadImage } from "../utils/cloudinary.js";
-import { Apiresponse } from "../utils/Apiresponse.js";
+import { Apiresponse } from "../utils/ApiResponse.js";
 import fs from "fs";
 import cookieParser from "cookie-parser";
 import { channel } from "diagnostics_channel";

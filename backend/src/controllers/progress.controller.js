@@ -1,8 +1,8 @@
-import {Apierror} from "./utils/Apierror.js"
-import {Apiresponse} from "./utils/Apiresponse.js"
-import {asynchandler} from "./utils/asynchandler.js"
+import {Apierror} from "../utils/ApiError.js"
+import {Apiresponse} from "../utils/ApiResponse.js"
+import {asynchandler,asyncHandler} from "../utils/asyncHandler.js"
 import { video } from "../models/video.model.js"
-import { Progress } from "./models/progress.model.js";
+import { Progress } from "../models/progress.model.js";
 const updateVideoProgress=asynchandler(async(req,res)=>{
     const {videoId}=req.params
     const {watchPercentage}=req.body

@@ -1,32 +1,134 @@
-import mongoose from "mongoose"
-import {Comment} from "../models/comment.model.js"
-import {ApiError} from "../utils/ApiError.js"
-import {ApiResponse} from "../utils/ApiResponse.js"
-import {asyncHandler} from "../utils/asyncHandler.js"
+import { asyncHandler } from "../utils/asyncHandler.js";
+import { ApiResponse } from "../utils/ApiResponse.js";
 
-const getVideoComments = asyncHandler(async (req, res) => {
-    //TODO: get all comments for a video
-    const {videoId} = req.params
-    const {page = 1, limit = 10} = req.query
-    
+import { video } from "../models/video.model.js";
+import { Like } from "../models/like.model.js";
+import { Subscription } from "../models/subscription.model.js";
 
-})
 
-const addComment = asyncHandler(async (req, res) => {
-    // TODO: add a comment to a video
-})
+const getChannelStats = asyncHandler(async (req, res) => {
+    const userId = req.user._id;
 
-const updateComment = asyncHandler(async (req, res) => {
-    // TODO: update a comment
-})
+ 
+    const videos = await Video.find({
+        owner: userId
+    }).select("_id views");
 
-const deleteComment = asyncHandler(async (req, res) => {
-    // TODO: delete a comment
-})
+
+    const totalVideos = videos.length;
+
+    const totalViews = videos.reduce(
+        (total, video) => total + (video.views || 0),
+        0
+    );
+
+    const videoIds = videos.map((video) => video._id);
+
+    const totalLikes = await Like.countDocuments({
+        video: { $in: videoIds }
+    });
+
+ 
+    const totalSubscribers = await Subscription.countDocuments({
+        channel: userId
+    });
+
+    return res.status(200).json(
+        new ApiResponse(
+            200,
+            {
+                totalVideos,
+                totalViews,
+                totalLikes,
+                totalSubscribers
+            },
+            "Channel statistics fetched successfully"
+        )
+    );
+});
+
+
+// 2. Get All Videos Uploaded by the Creator
+const getChannelVideos = asyncHandler(async (req, res) => {
+    const userId = req.user._id;
+
+    const videos = await video.find({
+        owner: userId
+    }).sort({ createdAt: -1 });
+
+    return res.status(200).json(
+        new ApiResponse(
+            200,
+            videos,
+            "Channel videos fetched successfully"
+        )
+    );
+});
+const getStudentDashboard = asyncHandler(async (req, res) => {
+    const userId = req.user._id;
+
+    // 1. Fetch recently uploaded published videos
+    const videos = await Video.find({
+        isPublished: true
+    })
+        .select("title thumbnail description duration views owner")
+        .sort({ createdAt: -1 })
+        .limit(10)
+        .lean();
+
+    // 2. Fetch the student's learning progress
+    const progress = await Progress.find({
+        user: userId
+    })
+        .populate("video", "title thumbnail duration isPublished")
+        .sort({ lastWatchedAt: -1 })
+        .lean();
+
+    // 3. Videos the student can continue learning
+    const continueLearning = progress.filter(
+        (item) =>
+            item.video &&
+            item.video.isPublished &&
+            !item.completed &&
+            item.watchPercentage > 0
+    );
+
+    // 4. Calculate statistics
+    const totalVideosStarted = progress.length;
+
+    const completedVideos = progress.filter(
+        (item) => item.completed
+    ).length;
+
+    const averageProgress = totalVideosStarted > 0
+        ? Math.round(
+            progress.reduce(
+                (total, item) => total + item.watchPercentage,
+                0
+            ) / totalVideosStarted
+        )
+        : 0;
+
+    // 5. Send the response
+    return res.status(200).json(
+        new ApiResponse(
+            200,
+            {
+                videos,
+                continueLearning,
+                statistics: {
+                    totalVideosStarted,
+                    completedVideos,
+                    averageProgress
+                }
+            },
+            "Student dashboard fetched successfully"
+        )
+    );
+});
 
 export {
-    getVideoComments, 
-    addComment, 
-    updateComment,
-     deleteComment
-    }
+    getChannelStats,
+    getChannelVideos,
+    getStudentDashboard
+};

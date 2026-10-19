@@ -1,15 +1,15 @@
 import { asyncHandler } from "../utils/asyncHandler.js";
-import { Apierror } from "../utils/Apierror.js";
-import { Apiresponse } from "../utils/Apiresponse.js";
+import { Apierror } from "../utils/ApiError.js";
+import { Apiresponse } from "../utils/ApiResponse.js";
 import { Like } from "../models/like.model.js";
-import { Video } from "../models/video.model.js";
+import { video } from "../models/video.model.js";
 
 
 // Like / Unlike an educational video
 const toggleVideoLike = asyncHandler(async (req, res) => {
     const { videoId } = req.params;
 
-    const video = await Video.findById(videoId);
+    const video = await video.findById(videoId);
 
     if (!video) {
         throw new Apierror(404, "Educational video not found");

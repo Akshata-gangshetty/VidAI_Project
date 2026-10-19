@@ -4,7 +4,7 @@ const aiContentSchema = new mongoose.Schema(
     {
         video: {
             type: mongoose.Schema.Types.ObjectId,
-            ref: "Video",
+            ref: "video",
             required: true
         },
         transcript: {

@@ -1,8 +1,8 @@
 import mongoose, { isValidObjectId } from "mongoose";
 import { video as VideoModel } from "../models/video.model.js";
 import { User } from "../models/user.model.js";
-import { ApiError } from "./utils/Apierror.js";
-import { ApiResponse } from "./utils/Apiresponse.js";
+import { ApiError } from "../utils/ApiError.js";
+import { ApiResponse } from "../utils/ApiResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { uploadImage } from "../utils/cloudinary.js";
 
@@ -38,7 +38,7 @@ const publishAVideo = asyncHandler(async (req, res) => {
         throw new ApiError(400, "Title and description are required");
     }
 
-    const videoFile = req.files?.videoFile?.[0]?.path;
+    const videoFile = req.files?.videofile?.[0]?.path;
     const thumbnail = req.files?.thumbnail?.[0]?.path;
 
     if (!videoFile) {
@@ -59,7 +59,7 @@ const publishAVideo = asyncHandler(async (req, res) => {
     }
 
     const newVideo = await VideoModel.create({
-        videoFile: uploadedVideo.url,
+        videofile: uploadedVideo.url,
         thumbnail: uploadedThumbnail.url,
         title,
         description,
@@ -91,7 +91,7 @@ const getVideoById = asyncHandler(async (req, res) => {
 
 const updateVideo = asyncHandler(async (req, res) => {
     const { videoId } = req.params;
-    const { title, description } = req.body;
+    const { title, description } = req.body || {};
 
     if (!videoId || !isValidObjectId(videoId)) {
         throw new ApiError(400, "Valid video id is required");
