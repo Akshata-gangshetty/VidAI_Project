@@ -1,6 +1,6 @@
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
-
+import {Progress} from "../models/progress.model.js";
 import { video } from "../models/video.model.js";
 import { Like } from "../models/like.model.js";
 import { Subscription } from "../models/subscription.model.js";
@@ -10,7 +10,7 @@ const getChannelStats = asyncHandler(async (req, res) => {
     const userId = req.user._id;
 
  
-    const videos = await Video.find({
+    const videos = await video.find({
         owner: userId
     }).select("_id views");
 
@@ -68,7 +68,7 @@ const getStudentDashboard = asyncHandler(async (req, res) => {
     const userId = req.user._id;
 
     // 1. Fetch recently uploaded published videos
-    const videos = await Video.find({
+    const videos = await video.find({
         isPublished: true
     })
         .select("title thumbnail description duration views owner")

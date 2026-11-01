@@ -10,12 +10,12 @@ const updateVideoProgress=asynchandler(async(req,res)=>{
         throw new Apierror(400,"watchPercentage must be between 0 and 100")
 
     }
-    const video=await video.findById(videoId)
-    if(!video){
+    const Video=await video.findById(videoId)
+    if(!Video){
         throw new Apierror(400,"video not found")
     }
     const completed=watchPercentage===100
-    const progress =await Progress.findoneAndUpdate(
+    const progress =await Progress.findOneAndUpdate(
         {
             user:req.user._id,
             video:videoId
@@ -60,20 +60,20 @@ const saveQuizScore = asynchandler(async (req, res) => {
         quizScore < 0 ||
         quizScore > 100
     ) {
-        throw new ApiError(
+        throw new Apierror(
             400,
             "Quiz score must be between 0 and 100"
         );
     }
-    const video = await Video.findById(videoId);
+    const Video = await video.findById(videoId);
 
-    if (!video) {
-        throw new ApiError(
+    if (!Video) {
+        throw new Apierror(
             404,
             "Educational video not found"
         );
     }
-    const progress=await Progress.findoneAndUpdate(
+    const progress=await Progress.findOneAndUpdate(
         {
                  user: req.user._id,
             video: videoId
@@ -113,7 +113,7 @@ const getMyProgress = asyncHandler(async (req, res) => {
         });
 
     return res.status(200).json(
-        new ApiResponse(
+        new Apiresponse (
             200,
             progress,
             "Learning progress fetched successfully"

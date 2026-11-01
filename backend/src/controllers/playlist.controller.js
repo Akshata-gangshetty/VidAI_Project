@@ -42,7 +42,7 @@ const getUserPlaylists = asyncHandler(async (req, res) => {
         const playlist = await Subscription
         .find({ owner:userId})
         .populate({
-            path:"video",
+            path:"videos",
             select:"name description thumbnail"
         })
         .sort({createdAt:-1})
@@ -62,7 +62,7 @@ const getPlaylistById = asyncHandler(async (req, res) => {
     //TODO: get playlist by id
     const playlist = await Playlist.findById(playlistId)
     .populate({
-            path:"video",
+            path:"videos",
             select:"name description thumbnail"
         })
     if(!playlist){
@@ -110,7 +110,7 @@ const removeVideoFromPlaylist = asyncHandler(async (req, res) => {
     const playlist = await Playlist.findById(playlistId)
    
     if(!playlist){
-             throw new Apierror(400,"playlist is fetched ")
+             throw new Apierror(400,"playlist is not fetched ")
         }
     if(playlist.owner.toString()!==req.user._id.toString()){
         throw new Apierror(400,"you are not authorized to add video to this playlist")
@@ -138,12 +138,59 @@ const removeVideoFromPlaylist = asyncHandler(async (req, res) => {
 const deletePlaylist = asyncHandler(async (req, res) => {
     const {playlistId} = req.params
     // TODO: delete playlist
+    const playlist =await Playlist.findById(playlistId) ;
+     if(!playlist){
+             throw new Apierror(400,"playlist is not fetched ")
+        }
+    
+    if(playlist.owner.toString()!==req.user._id.toString()){
+        throw new Apierror(400,"you are not authorized to delete this playlist")
+    }
+    await Playlist.findByIdAndDelete(playlistId)
+    return res.status(200).json(
+        new Apiresponse(
+            200,
+            null,
+            "Playlist deleted successfully"
+        )
+    );
 })
 
 const updatePlaylist = asyncHandler(async (req, res) => {
     const {playlistId} = req.params
     const {name, description} = req.body
     //TODO: update playlist
+const playlist =await Playlist.findById(playlistId) ;
+     if(!playlist){
+             throw new Apierror(400,"playlist is not fetched ")
+        }
+    
+    if(playlist.owner.toString()!==req.user._id.toString()){
+        throw new Apierror(400,"you are not authorized to update this playlist")
+    }
+    if(name!==undefined){
+        if(!name.trim()){
+            throw new Apierror(400,"Playlist name cannot be empty")
+        }
+        playlist.name=name.trim()
+    }
+    if(description!==undefined){
+         if(!description.trim()){
+            throw new Apierror(400,"Playlist description is required")
+        }
+        playlist.description=description.trim()
+
+    }
+    await playlist.save()
+    return res.status(200).json(
+        new Apiresponse(
+            200,
+            playlist,
+            "Playlist updated successfully"
+        )
+    );
+
+
 })
 
 export {
