@@ -55,6 +55,10 @@ const aiContentSchema = new mongoose.Schema(
             type: String,
             enum: ["pending", "processing", "completed", "failed"],
             default: "pending"
+        },
+        errorMessage: {
+            type: String,
+            default: ""
         }
     },
     {

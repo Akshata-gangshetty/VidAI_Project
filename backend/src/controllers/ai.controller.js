@@ -9,17 +9,16 @@ import { AiContent } from "../models/aiConnect.model.js";
 
 import { generateStudyMaterial } from "../services/ai.service.js";
 
-// Generate AI study material from a video transcript
+
+// Generate AI study material from a manually provided transcript
 const generateAiContent = asyncHandler(async (req, res) => {
     const { videoId } = req.params;
     const { transcript } = req.body;
 
-    // 1. Validate video ID
     if (!mongoose.isValidObjectId(videoId)) {
         throw new ApiError(400, "Invalid video ID");
     }
 
-    // 2. Validate transcript
     if (
         typeof transcript !== "string" ||
         !transcript.trim()
@@ -34,14 +33,12 @@ const generateAiContent = asyncHandler(async (req, res) => {
         );
     }
 
-    // 3. Find the video
     const videoItem = await VideoModel.findById(videoId);
 
     if (!videoItem) {
         throw new ApiError(404, "Educational video not found");
     }
 
-    // 4. Verify that the authenticated user owns the video
     if (String(videoItem.owner) !== String(req.user._id)) {
         throw new ApiError(
             403,
@@ -49,12 +46,10 @@ const generateAiContent = asyncHandler(async (req, res) => {
         );
     }
 
-    // 5. Find existing AI content
     let aiContent = await AiContent.findOne({
         video: videoId
     });
 
-    // 6. Create or update the content document
     if (!aiContent) {
         aiContent = new AiContent({
             video: videoId,
@@ -70,12 +65,10 @@ const generateAiContent = asyncHandler(async (req, res) => {
     await aiContent.save();
 
     try {
-        // 7. Generate content using Gemini
         const generatedContent = await generateStudyMaterial(
             transcript.trim()
         );
 
-        // 8. Save the generated content
         aiContent.summary = generatedContent.summary;
         aiContent.importantTopics =
             generatedContent.importantTopics;
@@ -87,7 +80,6 @@ const generateAiContent = asyncHandler(async (req, res) => {
 
         await aiContent.save();
 
-        // 9. Return the generated content
         return res.status(200).json(
             new ApiResponse(
                 200,
@@ -107,8 +99,8 @@ const generateAiContent = asyncHandler(async (req, res) => {
 });
 
 
-// Retrieve AI content for a video
-const getAiContent = asyncHandler(async (req, res) => {
+// Automatically transcribe video and generate AI study material
+const transcribeAndGenerateAiContent = asyncHandler(async (req, res) => {
     const { videoId } = req.params;
 
     // 1. Validate video ID
@@ -116,14 +108,146 @@ const getAiContent = asyncHandler(async (req, res) => {
         throw new ApiError(400, "Invalid video ID");
     }
 
-    // 2. Find the video
+    // 2. Find video
+    const videoItem = await VideoModel.findById(videoId);
+
+    if (!videoItem) {
+        throw new ApiError(404, "Educational video not found");
+    }
+
+    // 3. Check video ownership
+    if (String(videoItem.owner) !== String(req.user._id)) {
+        throw new ApiError(
+            403,
+            "You are not authorized to generate content for this video"
+        );
+    }
+
+    // 4. Check video URL
+    if (!videoItem.videofile) {
+        throw new ApiError(400, "Video file URL not found");
+    }
+
+    // 5. Find or create AI content
+    let aiContent = await AiContent.findOne({
+        video: videoId
+    });
+
+    if (!aiContent) {
+        aiContent = new AiContent({
+            video: videoId,
+            status: "processing"
+        });
+    } else {
+        aiContent.status = "processing";
+    }
+
+    aiContent.errorMessage = "";
+    await aiContent.save();
+
+    try {
+        // 6. Call Python FastAPI service
+        const transcriptionResponse = await fetch(
+            process.env.TRANSCRIPTION_SERVICE_URL ||
+            "http://127.0.0.1:8001/transcribe",
+            {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "x-transcription-key":
+                        process.env.TRANSCRIPTION_API_KEY
+                },
+                body: JSON.stringify({
+                    videoUrl: videoItem.videofile
+                }),
+                signal: AbortSignal.timeout(30 * 60 * 1000)
+            }
+        );
+
+        // 7. Check Python response
+        if (!transcriptionResponse.ok) {
+    const errorText = await transcriptionResponse.text();
+
+    throw new Error(
+        `Transcription service error (${transcriptionResponse.status}): ${errorText}`
+    );
+}
+
+        // 8. Extract transcript
+        const transcriptionData =
+            await transcriptionResponse.json();
+
+        const transcript = transcriptionData.transcript;
+
+        if (
+            typeof transcript !== "string" ||
+            !transcript.trim()
+        ) {
+            throw new Error("No transcript received from Python service");
+        }
+
+        if (transcript.length > 50000) {
+            throw new Error(
+                "Transcript is too long for AI content generation"
+            );
+        }
+
+        // 9. Save transcript
+        aiContent.transcript = transcript.trim();
+        await aiContent.save();
+
+        // 10. Generate study material using Gemini
+        const generatedContent = await generateStudyMaterial(
+            transcript.trim()
+        );
+
+        // 11. Save generated content
+        aiContent.summary = generatedContent.summary;
+        aiContent.importantTopics =
+            generatedContent.importantTopics;
+        aiContent.studyNotes = generatedContent.studyNotes;
+        aiContent.importantQuestions =
+            generatedContent.importantQuestions;
+        aiContent.quiz = generatedContent.quiz;
+        aiContent.status = "completed";
+
+        await aiContent.save();
+
+        // 12. Return response
+        return res.status(200).json(
+            new ApiResponse(
+                200,
+                aiContent,
+                "Video transcribed and AI study material generated successfully"
+            )
+        );
+
+    } catch (error) {
+        aiContent.status = "failed";
+        aiContent.errorMessage =
+            error.message || "Transcription or AI generation failed";
+
+        await aiContent.save();
+
+        throw error;
+    }
+});
+
+
+// Retrieve AI content for a video
+const getAiContent = asyncHandler(async (req, res) => {
+    const { videoId } = req.params;
+
+    if (!mongoose.isValidObjectId(videoId)) {
+        throw new ApiError(400, "Invalid video ID");
+    }
+
     const videoItem = await VideoModel.findById(videoId);
 
     if (!videoItem) {
         throw new ApiError(404, "Video not found");
     }
 
-    // 3. Allow the owner or a student to access published videos
     const isOwner =
         String(videoItem.owner) === String(req.user._id);
 
@@ -134,7 +258,6 @@ const getAiContent = asyncHandler(async (req, res) => {
         );
     }
 
-    // 4. Find generated content
     const aiContent = await AiContent.findOne({
         video: videoId
     });
@@ -167,7 +290,6 @@ const updateAiContent = asyncHandler(async (req, res) => {
         throw new ApiError(404, "Video not found");
     }
 
-    // Only the video owner can update its AI content
     if (String(videoItem.owner) !== String(req.user._id)) {
         throw new ApiError(
             403,
@@ -192,7 +314,6 @@ const updateAiContent = asyncHandler(async (req, res) => {
         quiz
     } = req.body;
 
-    // Validate the supplied fields
     if (
         transcript !== undefined &&
         (typeof transcript !== "string" || transcript.length > 50000)
@@ -232,19 +353,20 @@ const updateAiContent = asyncHandler(async (req, res) => {
         throw new ApiError(400, "Quiz must be an array");
     }
 
-    // Update only the fields explicitly allowed above
     if (transcript !== undefined) aiContent.transcript = transcript;
     if (summary !== undefined) aiContent.summary = summary;
+
     if (importantTopics !== undefined) {
         aiContent.importantTopics = importantTopics;
     }
+
     if (importantQuestions !== undefined) {
         aiContent.importantQuestions = importantQuestions;
     }
+
     if (studyNotes !== undefined) aiContent.studyNotes = studyNotes;
     if (quiz !== undefined) aiContent.quiz = quiz;
 
-    // Do not allow clients to set status directly
     await aiContent.save();
 
     return res.status(200).json(
@@ -259,6 +381,7 @@ const updateAiContent = asyncHandler(async (req, res) => {
 
 export {
     generateAiContent,
+    transcribeAndGenerateAiContent,
     getAiContent,
     updateAiContent
 };

@@ -40,7 +40,6 @@ def get_model():
 
     return whisper_model
 
-
 def download_video(url, destination):
     parsed = urlparse(str(url))
 
@@ -61,21 +60,31 @@ def download_video(url, destination):
             str(url),
             stream=True,
             timeout=(15, 120),
-            allow_redirects=False
+            headers={
+                "User-Agent": "Mozilla/5.0",
+                "Accept": "video/*,*/*"
+            }
         ) as response:
 
             response.raise_for_status()
 
-            length = response.headers.get("Content-Length")
+            content_type = response.headers.get(
+                "Content-Type", ""
+            ).lower()
 
-            if length and int(length) > max_size:
+            if not (
+                content_type.startswith("video/")
+                or content_type == "application/octet-stream"
+            ):
                 raise HTTPException(
-                    status_code=413,
-                    detail="Video is too large"
+                    status_code=415,
+                    detail=f"Unexpected video content type: {content_type}"
                 )
 
             with open(destination, "wb") as file:
-                for chunk in response.iter_content(1024 * 1024):
+                for chunk in response.iter_content(
+                    chunk_size=1024 * 1024
+                ):
                     if not chunk:
                         continue
 
@@ -89,7 +98,15 @@ def download_video(url, destination):
 
                     file.write(chunk)
 
-    except requests.RequestException:
+            if downloaded == 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Downloaded video is empty"
+                )
+
+    except requests.RequestException as error:
+        print("Cloudinary download error:", str(error))
+
         raise HTTPException(
             status_code=400,
             detail="Unable to download Cloudinary video"
