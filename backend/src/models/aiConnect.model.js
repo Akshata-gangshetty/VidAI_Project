@@ -65,5 +65,10 @@ const aiContentSchema = new mongoose.Schema(
         timestamps: true
     }
 );
+aiContentSchema.index({
+    video:1
+},{
+    unique:true
+})
 
 export const AiContent = mongoose.model("AiContent", aiContentSchema);

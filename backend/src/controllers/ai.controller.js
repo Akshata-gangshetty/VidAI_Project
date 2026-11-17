@@ -8,6 +8,22 @@ import { video as VideoModel } from "../models/video.model.js";
 import { AiContent } from "../models/aiConnect.model.js";
 
 import { generateStudyMaterial } from "../services/ai.service.js";
+import { ApiSpec } from "@google/genai";
+    const getStudentAiContent=(aiContent)=>{
+        const content=aiContent.toObject();
+        return{
+            ...content,
+            quiz:content.quiz.map((question)=>{
+                const{
+                    correctAnswer,
+                    explanation,
+                    ...studentQuestion
+                }=question;
+                return studentQuestion;
+                
+            })||[]
+        }
+    }
 
 
 // Generate AI study material from a manually provided transcript
@@ -83,7 +99,7 @@ const generateAiContent = asyncHandler(async (req, res) => {
         return res.status(200).json(
             new ApiResponse(
                 200,
-                aiContent,
+                getStudentAiContent(aiContent),
                 "AI study material generated successfully"
             )
         );
@@ -129,22 +145,37 @@ const transcribeAndGenerateAiContent = asyncHandler(async (req, res) => {
     }
 
     // 5. Find or create AI content
-    let aiContent = await AiContent.findOne({
-        video: videoId
-    });
+    let aiContent;
+    try {
+        aiContent = await AiContent.findOneAndUpdate({
+        video: videoId,
+        status:{
+            $ne:"processing"
+        },
+    },{
+        $set:{
+            status:"processing",
+            errorMessage:"",
+        },
+        $setOnInsert:{
+            video:videoId,
+        },
 
-    if (!aiContent) {
-        aiContent = new AiContent({
-            video: videoId,
-            status: "processing"
-        });
-    } else {
-        aiContent.status = "processing";
+    },
+    {
+        new:true,
+        upsert:true,
+        setDefaultsOnInsert:true,
     }
-
-    aiContent.errorMessage = "";
-    await aiContent.save();
-
+);
+        
+    } catch (error) {
+        if(error.code === 11000){
+            throw new ApiError(409,"AI content  generation is already in progress")
+        }
+        throw error
+        
+    }
     try {
         // 6. Call Python FastAPI service
         const transcriptionResponse = await fetch(
@@ -166,10 +197,12 @@ const transcribeAndGenerateAiContent = asyncHandler(async (req, res) => {
 
         // 7. Check Python response
         if (!transcriptionResponse.ok) {
-    const errorText = await transcriptionResponse.text();
+            const status=transcriptionResponse.status;
 
-    throw new Error(
-        `Transcription service error (${transcriptionResponse.status}): ${errorText}`
+    throw new ApiError(
+        status===401 || status===403?502:503,
+        status===401 || status===403?"Transcription service authentication failed":
+     `Transcription service failed with status ${status}`
     );
 }
 
@@ -217,7 +250,7 @@ const transcribeAndGenerateAiContent = asyncHandler(async (req, res) => {
         return res.status(200).json(
             new ApiResponse(
                 200,
-                aiContent,
+                getStudentAiContent(aiContent),
                 "Video transcribed and AI study material generated successfully"
             )
         );
@@ -269,7 +302,7 @@ const getAiContent = asyncHandler(async (req, res) => {
     return res.status(200).json(
         new ApiResponse(
             200,
-            aiContent,
+            getStudentAiContent(aiContent),
             "AI content fetched successfully"
         )
     );
@@ -372,7 +405,7 @@ const updateAiContent = asyncHandler(async (req, res) => {
     return res.status(200).json(
         new ApiResponse(
             200,
-            aiContent,
+            getStudentAiContent(aiContent),
             "AI content updated successfully"
         )
     );

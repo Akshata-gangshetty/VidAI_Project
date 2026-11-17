@@ -20,8 +20,14 @@ type Video = {
 type QuizQuestion = {
   question: string;
   options: string[];
+  // correctAnswer: string;
+  // explanation?: string;
+};
+type QuizReview = {
+  question: string;
   correctAnswer: string;
-  explanation?: string;
+  explanation: string;
+  selectedAnswer: string;
 };
 
 // AI content type
@@ -73,11 +79,14 @@ export default function VideoPage() {
   const [quizSaving, setQuizSaving] = useState(false);
   const [quizSaveError, setQuizSaveError] = useState("");
   const [savedQuizScore, setSavedQuizScore] = useState<number | null>(null);
-  const lastSavedProgress=useRef(0);
-  const videoRef=useRef<HTMLVideoElement | null>(null);
-  const [savedPlaybackPosition,setSavedPlayBackPosition]=useState(0)
+ const lastSavedProgress = useRef(0);
 
-  // Fetch video details
+const videoRef = useRef<HTMLVideoElement | null>(null);
+
+const [savedPlaybackPosition, setSavedPlaybackPosition] = useState(0);
+const [quizReview,setQuizReview]=useState<QuizReview[]>([])
+
+  // Fetch video detail
   useEffect(() => {
     const fetchVideo = async () => {
       try {
@@ -121,33 +130,60 @@ export default function VideoPage() {
       fetchVideo();
     }
   }, [videoId, router, apiUrl]);
-  useEffect(()=>{
+  
+  useEffect(() => {
+  const fetchSavedProgress = async () => {
+    try {
+      if (!apiUrl || !videoId) return;
 
-  })
-  useEffect(()=>{
-    const fetchSavedProgress=async()=>{
-      try{
-        if(!apiUrl || !videoId) return 
-        const response =await fetch(`${apiUrl.replace(/\/+$/,"")}/progress/my-progress`,
-      {
-        method:"GET",
-        credentials:"include",
-      })
-      if(!response.ok) return  
-      const result=await response.json()
-      const progressList=result.data;
-      const currentProgress=progressList.find((item:any)=> item.video?._id===videoId);
-      if(currentProgress){
-        setSavedPlayBackPosition(currentProgress.lastWatchedPosition || 0);
-        lastSavedProgress.current=currentProgress.watchPercentage || 0
+      const response = await fetch(
+        `${apiUrl.replace(/\/+$/, "")}/progress/my-progress`,
+        {
+          method: "GET",
+          credentials: "include",
+          cache: "no-store",
+        }
+      );
+
+      if (!response.ok) return;
+
+      const result = await response.json();
+
+      const progressList = Array.isArray(result.data)
+        ? result.data
+        : result.data?.progress || [];
+
+      const currentProgress = progressList.find(
+        (item: any) => item.video?._id === videoId
+      );
+
+      if (currentProgress) {
+        setSavedPlaybackPosition(
+          currentProgress.lastWatchedPosition || 0
+        );
+
+        lastSavedProgress.current =
+          currentProgress.watchPercentage || 0;
       }
-      }
-      catch(error){
-        console.error("Error fetching saved progress",error)
-      }
+    } catch (error) {
+      console.error("Error fetching saved progress:", error);
     }
-    fetchSavedProgress()
-  },[apiUrl,videoId])
+  };
+
+  fetchSavedProgress();
+}, [apiUrl, videoId]);
+useEffect(() => {
+  const player = videoRef.current;
+
+  if (
+    player &&
+    player.readyState >= 1 &&
+    savedPlaybackPosition > 0 &&
+    savedPlaybackPosition < player.duration
+  ) {
+    player.currentTime = savedPlaybackPosition;
+  }
+}, [savedPlaybackPosition]);
 
   // Fetch previously generated AI content
   useEffect(() => {
@@ -205,6 +241,7 @@ export default function VideoPage() {
       setQuizSubmitted(false);
       setSavedQuizScore(null);
       setQuizSaveError("");
+      setQuizReview([]);
 
       if (!apiUrl) {
         throw new Error("API URL is missing.");
@@ -259,21 +296,15 @@ export default function VideoPage() {
     }));
   };
 
-  // Calculate number of correct answers
-  const calculateScore = () => {
-    const questions = aiContent?.quiz || [];
 
-    return questions.filter(
-      (question, index) =>
-        selectedAnswers[index] === question.correctAnswer
-    ).length;
-  };
+ 
 
   // Submit quiz and save score in MongoDB
   const submitQuiz = async () => {
     try {
       setQuizSaving(true);
       setQuizSaveError("");
+
 
       if (!apiUrl) {
         throw new Error("API URL is missing.");
@@ -324,7 +355,9 @@ export default function VideoPage() {
 
       // Save successful: display quiz result
       setSavedQuizScore(result.data?.score ?? null);
+      setQuizReview(result.data?.quizReview?? [])
       setQuizSubmitted(true);
+
 
     } catch (err) {
       setQuizSaveError(
@@ -336,34 +369,62 @@ export default function VideoPage() {
       setQuizSaving(false);
     }
   };
-  const saveVideoProgress=async(percentage:number,
-    currentTime:number
-  )=>{
-    try{
-      if(!apiUrl || !videoId) return 
-      const roundedPercentage=Math.min(100,Math.round(percentage));
-      if(roundedPercentage<lastSavedProgress.current+10 && roundedPercentage!==100) return
-      const response=await fetch(`{apiUrl.replace(/\/+$/,"")}/progress/${videoId}`,{
-        method:"PATCH",
-        credentials:"include",
-        headers:{
-          "Content-Type":"application/json"
-        },  
-        body:JSON.stringify({
-          watchPercentage:roundedPercentage,
-          lastWatchedPosition:currentTime
+  const saveVideoProgress = async (
+  percentage: number,
+  currentTime: number,
+  force = false
+) => {
+  try {
+    if (!apiUrl || !videoId) return;
+
+    const roundedPercentage = Math.min(
+      100,
+      Math.round(percentage)
+    );
+
+    // Avoid unnecessary API requests
+    if (
+      !force &&
+      roundedPercentage < lastSavedProgress.current + 10
+    ) {
+      return;
+    }
+
+    if (
+      !force &&
+      roundedPercentage <= lastSavedProgress.current
+    ) {
+      return;
+    }
+
+    const response = await fetch(
+      `${apiUrl.replace(/\/+$/, "")}/progress/${videoId}`,
+      {
+        method: "PATCH",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          watchPercentage: roundedPercentage,
+          lastWatchedPosition: currentTime,
         }),
-      })
-      if(!response.ok){
-        console.error("Failed to save video progress:",response.statusText)
-        return
       }
-      lastSavedProgress.current=roundedPercentage;
+    );
+
+    if (!response.ok) {
+      console.error("Failed to save video progress");
+      return;
     }
-    catch(err){
-      console.error("Error saving video progress:",err)
-    }
+
+    lastSavedProgress.current = Math.max(
+      lastSavedProgress.current,
+      roundedPercentage
+    );
+  } catch (error) {
+    console.error("Error saving video progress:", error);
   }
+};
 
 
   // Loading screen
@@ -429,35 +490,64 @@ export default function VideoPage() {
 
           <div className="overflow-hidden rounded-2xl bg-black">
             <video
-            ref={videoRef}
-              controls
-              poster={video.thumbnail}
-              className="aspect-video w-full"
-               onLoadedMetadata={(event)=>{
-                 const player=event.currentTarget;
-                if(savedPlaybackPosition>0 && savedPlaybackPosition<player.duration){
-                  player.currentTime=savedPlaybackPosition
-                  
-                }}
-                
-                }
-              onTimeUpdate={(event)=>{
-                const player=event.currentTarget;
-               
-                if(player.duration>0){
-                  const percentage=(player.currentTime/player.duration)*100;
-                  saveVideoProgress(percentage,player.currentTime);
-                }
-              }}
-              onEnded={(event)=>saveVideoProgress(100,event?.currentTarget?.duration)}
-            >
-              <source
-                src={video.videofile}
-                type="video/mp4"
-              />
+  ref={videoRef}
+  controls
+  poster={video.thumbnail}
+  className="aspect-video w-full"
 
-              Your browser does not support video playback.
-            </video>
+  onLoadedMetadata={(event) => {
+    const player = event.currentTarget;
+
+    if (
+      savedPlaybackPosition > 0 &&
+      savedPlaybackPosition < player.duration
+    ) {
+      player.currentTime = savedPlaybackPosition;
+    }
+  }}
+
+  onTimeUpdate={(event) => {
+    const player = event.currentTarget;
+
+    if (player.duration > 0) {
+      const percentage =
+        (player.currentTime / player.duration) * 100;
+
+      saveVideoProgress(
+        percentage,
+        player.currentTime
+      );
+    }
+  }}
+
+  onPause={(event) => {
+    const player = event.currentTarget;
+
+    if (player.duration > 0 && !player.ended) {
+      const percentage =
+        (player.currentTime / player.duration) * 100;
+
+      saveVideoProgress(
+        percentage,
+        player.currentTime,
+        true
+      );
+    }
+  }}
+
+  onEnded={(event) => {
+    const player = event.currentTarget;
+
+    saveVideoProgress(100, player.duration, true);
+  }}
+>
+  <source
+    src={video.videofile}
+    type="video/mp4"
+  />
+
+  Your browser does not support video playback.
+</video>
           </div>
 
           <h2 className="mt-5 text-2xl font-bold">
@@ -643,6 +733,7 @@ export default function VideoPage() {
               ) : (
                 <>
                   {quizQuestions.map((question, index) => (
+                    
                     <div
                       key={index}
                       className="mb-6 rounded-xl border border-white/10 p-5"
@@ -675,30 +766,46 @@ export default function VideoPage() {
                             <span>{option}</span>
                           </label>
                         ))}
+                        
                       </div>
+                     
 
                       {/* Correct Answer and Explanation */}
-                      {quizSubmitted && (
-                        <div className="mt-4 text-sm">
-                          <p
-                            className={
-                              selectedAnswers[index] === question.correctAnswer
-                                ? "text-green-400"
-                                : "text-red-400"
-                            }
-                          >
-                            Correct answer: {question.correctAnswer}
-                          </p>
+                      {/* Correct Answer and Explanation */}
+{quizSubmitted && quizReview[index] && (
+  <div className="mt-4 rounded-lg bg-white/5 p-4 text-sm">
+    <p
+      className={
+        quizReview[index].selectedAnswer ===
+        quizReview[index].correctAnswer
+          ? "text-green-400"
+          : "text-red-400"
+      }
+    >
+      Your answer: {quizReview[index].selectedAnswer}
+    </p>
 
-                          {question.explanation && (
-                            <p className="mt-2 text-gray-400">
-                              Explanation: {question.explanation}
-                            </p>
-                          )}
-                        </div>
-                      )}
+    <p className="mt-2 text-green-400">
+      Correct answer: {quizReview[index].correctAnswer}
+    </p>
+
+    <p className="mt-2 text-gray-300">
+      Explanation: {quizReview[index].explanation}
+    </p>
+  </div>
+)}
                     </div>
                   ))}
+                   {quizSubmitted && savedQuizScore !== null &&(
+                          <div className="mt-5 rounded-xl border border-green-500/30 p-4">
+                            <h3 className="text-xl font-bold text-green-400">
+                              Quize Result
+                            </h3>
+                            <p className="mt-2 text-gray-300">
+                              Your Score:{savedQuizScore}%
+                            </p>
+                          </div>
+                        )}
 
                   {/* Submit Quiz */}
                   {!quizSubmitted ? (
@@ -723,17 +830,8 @@ export default function VideoPage() {
                     </>
                   ) : (
                     <div className="rounded-xl bg-violet-500/10 p-5">
-                      <h4 className="text-xl font-bold text-violet-400">
-                        Your Score: {calculateScore()} / {quizQuestions.length}
-                      </h4>
-
-                      <p className="mt-2 text-gray-300">
-                        Percentage: {savedQuizScore}%
-                      </p>
-
-                      <p className="mt-2 text-sm text-green-400">
-                        Quiz score saved successfully!
-                      </p>
+                      
+                     
 
                       <button
                         onClick={() => {
@@ -741,6 +839,7 @@ export default function VideoPage() {
                           setQuizSubmitted(false);
                           setSavedQuizScore(null);
                           setQuizSaveError("");
+                          setQuizReview([])
                         }}
                         className="mt-4 rounded-lg bg-blue-600 px-5 py-2 hover:bg-blue-700"
                       >
